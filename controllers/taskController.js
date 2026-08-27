@@ -1,8 +1,26 @@
 const Task = require("../models/Task");
+const Tag = require("../models/Tag");
+
+const saveTags = async (tags) => {
+  if (!tags || !tags.length) return;
+  await Promise.all(
+    tags.map((name) =>
+      Tag.updateOne({ name }, { $setOnInsert: { name } }, { upsert: true })
+    )
+  );
+};
+
+const populateTask = (query) =>
+  query
+    .populate("project", "name")
+    .populate("team", "name")
+    .populate("owners", "name email");
 
 const createTask = async (req, res) => {
   try {
-    const { name, project, team, tags, dueDate, estimatedTime, status } = req.body;
+    const { name, project, team, tags, dueDate, estimatedTime, status, owners } = req.body;
+
+    await saveTags(tags);
 
     const task = await Task.create({
       name,
@@ -12,13 +30,10 @@ const createTask = async (req, res) => {
       dueDate,
       estimatedTime,
       status,
-      owners: [req.user.id], 
+      owners: owners && owners.length ? owners : [req.user.id],
     });
 
-    const populated = await Task.findById(task._id)
-      .populate("project", "name")
-      .populate("team", "name")
-      .populate("owners", "name email");
+    const populated = await populateTask(Task.findById(task._id));
 
     res.status(201).json(populated);
   } catch (error) {
@@ -35,10 +50,7 @@ const getTasks = async (req, res) => {
     if (req.query.project) filter.project = req.query.project;
     if (req.query.tags)    filter.tags = req.query.tags;
 
-    const tasks = await Task.find(filter)
-      .populate("project", "name")
-      .populate("team", "name")
-      .populate("owners", "name email");
+    const tasks = await populateTask(Task.find(filter));
 
     res.status(200).json(tasks);
   } catch (error) {
@@ -46,16 +58,34 @@ const getTasks = async (req, res) => {
   }
 };
 
+const getTaskById = async (req, res) => {
+  try {
+    const task = await populateTask(Task.findById(req.params.id));
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+    res.status(200).json(task);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 const updateTask = async (req, res) => {
   try {
-    const updatedTask = await Task.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    )
-      .populate("project", "name")
-      .populate("team", "name")
-      .populate("owners", "name email");
+    const allowed = ["name", "project", "team", "tags", "dueDate", "estimatedTime", "status", "owners"];
+    const updates = {};
+    allowed.forEach((key) => {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    });
+
+    await saveTags(updates.tags);
+
+    const updatedTask = await populateTask(
+      Task.findByIdAndUpdate(req.params.id, updates, {
+        new: true,
+        runValidators: true,
+      })
+    );
 
     if (!updatedTask) {
       return res.status(404).json({ message: "Task not found" });
@@ -78,4 +108,4 @@ const deleteTask = async (req, res) => {
   }
 };
 
-module.exports = { createTask, getTasks, updateTask, deleteTask };
+module.exports = { createTask, getTasks, getTaskById, updateTask, deleteTask };

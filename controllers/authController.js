@@ -17,7 +17,7 @@ const signup = async (req, res) => {
     const newUser = await User.create({
       name,
       email,
-      password: hashedPassword, 
+      password: hashedPassword,
     });
 
     res.status(201).json({
@@ -46,7 +46,7 @@ const login = async (req, res) => {
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" } 
+      { expiresIn: "7d" }
     );
 
     res.status(200).json({
@@ -68,4 +68,13 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, getMe };
+const getUsers = async (req, res) => {
+  try {
+    const users = await User.find().select("name email");
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { signup, login, getMe, getUsers };
