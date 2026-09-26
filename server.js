@@ -17,7 +17,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-connectDB();
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    res.status(503).json({ message: "Database unavailable", error: error.message });
+  }
+});
 
 app.use("/auth", authRoutes);
 app.use("/teams", teamRoutes);
